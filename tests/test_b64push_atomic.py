@@ -121,6 +121,37 @@ class B64PushTest(TempDirTest):
         for command in self.commands():
             self.assertIn(f"'{target}", command, "every remote path is single-quoted")
 
+    def test_chunks_are_sized_from_the_whole_command_path_included(self):
+        # #2614: over TV_ADB_BINARY, theme.sh stopped at the first wallpaper with "shell command too
+        # long". The chunk was sized from the base64 alone with a fixed 64-byte margin, so a staging
+        # path longer than the installer's put the echo command past the adb client's 4096-byte
+        # service limit. Every echo command must now fit max_chunk_size with `shell:` and its NUL to
+        # spare, whatever the staging path's length.
+        data = os.urandom(10000)
+        target = self.remote_dir / "cyt-theme-wallpapers-01-dusk-peaks.jpg"
+        result = self.push(str(self.local(data)), str(target), FAKE_MAX="4096")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(target.read_bytes(), data)
+        echoes = [c for c in self.commands() if c.startswith("echo '")]
+        self.assertGreater(len(echoes), 1, "10 KB in chunks this size takes more than one command")
+        for command in echoes:
+            self.assertLessEqual(len(command) + 8, 4096,
+                                 "the whole echo command, `shell:` and its NUL included, must fit "
+                                 "one payload")
+        # The staging name this push used is long enough that the pre-fix sizing crossed the limit.
+        self.assertGreater(len(str(target)) + len(".b64.part") + 4008 + 25, 4096)
+
+    def test_a_transport_too_small_for_the_path_is_refused_without_sending(self):
+        # The floor on the chunk: a path that leaves under 256 bytes per command is an argument
+        # error (exit 2, nothing sent), not a loop of one- or two-byte transfers.
+        target = self.remote_dir / "file.jpg"
+        result = self.push(str(self.local(b"x" * 4096)), str(target), FAKE_MAX="300")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn(f"refusing remote path '{target}'", result.stderr)
+        self.assertIn("Nothing was sent to the TV.", result.stderr)
+        self.assertEqual(self.commands(), [], "not even the staging cleanup ran")
+        self.assertFalse(target.exists())
+
     def test_failed_checksum_leaves_the_original_intact(self):
         target = self.remote_dir / "file.apk"
         target.write_bytes(b"old contents")

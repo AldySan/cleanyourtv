@@ -93,9 +93,29 @@ def main():
         return 2
     b64 = remote + ".b64.part"
     part = remote + ".part"
+    # One chunk travels as one shell command, `echo '<base64>' >> '<staging path>' && echo okN`,
+    # and the transport's limit applies to that whole command, not to the base64 alone:
+    # Google's adb client refuses `shell:<command>` once it passes 4096 bytes ("shell command
+    # too long"; MAX_PAYLOAD_V1 in its client/commandline.cpp), and adbd before Android 7
+    # aborts an OPEN payload over the max data it announced. A fixed 64-byte margin counted
+    # neither the command's own text nor the staging path, so the installer's short
+    # /data/local/tmp/tvhome.apk fitted while a wallpaper's longer name did not, and theme.sh
+    # over TV_ADB_BINARY stopped mid-collection with the theme half applied (#2614). Size the
+    # chunk from the command this push will actually send, path included.
+    digits = len(str((len(data) + 255) // 256))   # ok<N> can reach this many digits at the 256-byte floor below
+    fixed = len(f"echo '' >> {q(b64)} && echo ok") + digits
+    room = dev.max_chunk_size - 8 - fixed   # 8: `shell:` before the command, the NUL every OPEN payload ends with, and one to spare
+    chunk = min(CHUNK, room * 3 // 4)
+    chunk -= chunk % 3   # a multiple of 3, or each chunk ends in '=' padding mid-stream and base64 -d corrupts it
+    if chunk < 256:
+        # A path that leaves under 256 bytes per command is an argument error, like the path
+        # checks above: answered before anything is sent, so no cleanup has anything to clear.
+        sys.stderr.write(f"refusing remote path {remote!r}: at this transport's "
+                         f"{dev.max_chunk_size}-byte shell-command limit it leaves under 256 bytes "
+                         "per chunk. Nothing was sent to the TV.\n")
+        dev.close()
+        return 2
     try:
-        chunk = min(CHUNK, dev.max_chunk_size * 3 // 4 - 64)   # base64 of the chunk plus the echo must fit one payload
-        chunk -= chunk % 3   # a multiple of 3, or each chunk ends in '=' padding mid-stream and base64 -d corrupts it
         # Only our own temporary names are cleared; the target stays until the copy is verified.
         # `: >` creates the base64 file even for an empty upload, so `base64 -d` has an input.
         dev.shell(f"rm -f {q(b64)} {q(part)} && : > {q(b64)}")
