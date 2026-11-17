@@ -1,13 +1,15 @@
 # Hotack D08-series projector (Allwinner board, reports ADT-3/adt3/adt3; the Magcubic HY300/HY320
 # family), Android 11 (SDK 30), 1280x720 panel, density 240.
+# Firmware UI_Veng.projector.20241225.164550, from a Magcubic HY320 unit in the #1576 thread.
 # The com.htc.* packages are Hotack's OEM stack, not HTC Corp. The stock launcher is
 # com.htc.htclauncherhighenglishd08 and the projector's own settings live in com.htc.htcsettings.
-# The #1576 report did not capture the firmware build string, so match on those two, the 720p panel
-# and the package set; do not go by the ADT-3 name, which several different sets report.
+# Tested on UI_Veng.projector.20241225 builds; the reporter's own unit did not capture its build
+# string, so on other builds match on those two, the 720p panel and the package set; do not go
+# by the ADT-3 name, which several different sets report.
 # Same Allwinner/HTC firmware family as examples/portronics-beem-470/ (Android 11, 1080p, the same
 # stock launcher, which that folder also disables), examples/magcubic-hy300-pro/ (Android 11, 720p,
 # the same stock launcher, left enabled there) and examples/alwtniet-hy320-mini/ (Android 11, 720p,
-# older build); examples/hotack-l018/ is Hotack's LuminaOS cousin (com.htc.luminaos, not this
+# 20250117 build); examples/hotack-l018/ is Hotack's LuminaOS cousin (com.htc.luminaos, not this
 # launcher). Each is its own folder because the retail sets and builds differ.
 #
 # Apply:   TV_HOST=<projector ip> tools/disable.sh examples/hotack-d08/debloat.txt
